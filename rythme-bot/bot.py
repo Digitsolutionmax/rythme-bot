@@ -10,18 +10,42 @@ import schedule
 import threading
 import time
 import random
+import os
+import anthropic
 from datetime import datetime
 
 # ─────────────────────────────────────────────────────────────
-# CONFIGURATION — mets ton token ici
+# CONFIGURATION
 # ─────────────────────────────────────────────────────────────
-BOT_TOKEN = "8750519237:AAGlIL3ENarVlHEsoe7VAh-rkOiqq3E18Rc"
+BOT_TOKEN       = os.environ.get("BOT_TOKEN", "8750519237:AAGlIL3ENarVlHEsoe7VAh-rkOiqq3E18Rc")
+ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode='Markdown')
+bot            = telebot.TeleBot(BOT_TOKEN, parse_mode='Markdown')
+claude         = anthropic.Anthropic(api_key=ANTHROPIC_KEY) if ANTHROPIC_KEY else None
 
 # Chat ID de Maxence (sauvegardé après /start)
-chat_id = None
+chat_id    = None
 waiting_for = None  # suivi de quel check-in est en attente
+
+# ─────────────────────────────────────────────────────────────
+# CONTEXTE CLAUDE — Maxence et son protocole
+# ─────────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """Tu es l'assistant personnel de Maxence, intégré dans son bot Telegram RYTHME.
+
+Ton rôle : l'aider à tenir son protocole de vie, répondre à ses questions, le motiver, et l'accompagner dans sa transformation.
+
+Ce que tu sais sur Maxence et son protocole :
+- Il est entrepreneur avec une équipe
+- Son protocole journalier : réveil 6h45, yoga 40 min, 2 blocs deep work de 90 min (8h45 et 10h35), écran éteint à 13h, surf ou muscu l'après-midi, marche au coucher du soleil à 17h
+- Il travaille MAX 3h par jour en focus total (deep work)
+- Il fait du yoga le matin et du surf ou de la muscu l'après-midi
+- Il travaille sur sa gestion de la dopamine : addiction au porno et à la nouveauté sexuelle qu'il identifie lui-même comme une addiction dopaminergique
+- Il croit qu'il est le créateur de son univers
+- Il est inspiré par Tesla (énergie, fréquence, vibration) et la philosophie du rythme naturel
+- Il ne veut pas travailler 12h par jour même si ça rapporte — il veut être comblé et sain
+- Son règle d'or : yoga avant l'écran, écran mort à 13h, pas d'écran en chambre, surf prioritaire sur muscu
+
+Ton style : direct, chaleureux, sans bullshit. Réponds en français. Sois concis — max 3-4 paragraphes. Si c'est une question rapide, réponds en 2-3 phrases. Tu peux être honnête et challenger Maxence si nécessaire. Utilise des emojis avec modération."""
 
 
 # ─────────────────────────────────────────────────────────────
@@ -391,15 +415,27 @@ def handle_message(message):
     elif any(m in text for m in ["regle", "règle", "protocole"]):
         cmd_regles(message)
 
-    # Réponse générique humaine
+    # Réponse via Claude si disponible, sinon fallback
     else:
-        reponses = [
-            f"Je suis là. 🌅 Continue ton rythme.\n\n_{random.choice(QUOTES)}_",
-            "Tu avances, Maxence. Un jour à la fois. 🌊",
-            f"💬 _{random.choice(QUOTES)}_",
-            "Le rythme se construit dans les petits gestes quotidiens. 🧘",
-        ]
-        bot.send_message(message.chat.id, random.choice(reponses))
+        if claude:
+            try:
+                response = claude.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=500,
+                    system=SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": message.text}]
+                )
+                reply = response.content[0].text
+                bot.send_message(message.chat.id, reply)
+            except Exception as e:
+                bot.send_message(message.chat.id, f"💬 _{random.choice(QUOTES)}_")
+        else:
+            reponses = [
+                f"Je suis là. 🌅 Continue ton rythme.\n\n_{random.choice(QUOTES)}_",
+                "Tu avances, Maxence. Un jour à la fois. 🌊",
+                f"💬 _{random.choice(QUOTES)}_",
+            ]
+            bot.send_message(message.chat.id, random.choice(reponses))
 
 
 # ─────────────────────────────────────────────────────────────
